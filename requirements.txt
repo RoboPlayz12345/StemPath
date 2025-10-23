@@ -1,17 +1,8 @@
-# Streamlit UI
+torch==2.4.1+cpu
+transformers>=4.44.2
+sentence-transformers>=3.1.0
 streamlit==1.39.0
-
-# Core AI / NLP libraries
-transformers==4.44.2
-sentence-transformers==3.1.0
-torch==2.4.1
-
-# Data handling
-pandas==2.2.3
-openpyxl==3.1.5
-
-# Optional but helpful for caching, embeddings, and numpy ops
-numpy==1.26.4
-
-# Hugging Face utilities (used indirectly by transformers)
-huggingface-hub==0.25.2
+pandas>=2.2.3
+openpyxl>=3.1.5
+numpy>=1.26.4
+huggingface-hub>=0.25.2
