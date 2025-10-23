@@ -1,28 +1,25 @@
 import streamlit as st
 import pandas as pd
 import torch
+from pathlib import Path
 from sentence_transformers import SentenceTransformer, util
 from transformers import pipeline
-from pathlib import Path
-import os
 
-# --------------------------------------
-# STREAMLIT PAGE SETTINGS
-# --------------------------------------
+# ---------------------------
+# Page Config
+# ---------------------------
 st.set_page_config(
     page_title="STEMPath – AI Career & Learning Guide",
     page_icon="🧠",
     layout="centered"
 )
-
 st.title("🧠 STEMPath – AI Career & Learning Guide")
-st.markdown("Discover your ideal career path using open-source AI — no API keys, no limits!")
+st.markdown("Discover your ideal career path using open-source AI — no API keys, fully offline!")
 st.divider()
 
-
-# --------------------------------------
-# LOAD MODELS (cached)
-# --------------------------------------
+# ---------------------------
+# Models (cached)
+# ---------------------------
 @st.cache_resource
 def load_models():
     embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
@@ -31,106 +28,81 @@ def load_models():
 
 embedder, generator = load_models()
 
-
-# --------------------------------------
-# LOAD OR UPLOAD O*NET-LIKE DATASET
-# --------------------------------------
-st.subheader("📁 Upload Your O*NET / Job Dataset")
-
+# ---------------------------
+# Upload Dataset
+# ---------------------------
 uploaded_file = st.file_uploader(
-    "Upload a CSV or Excel file containing at least 'title' and 'description' columns",
+    "Upload your O*NET or job dataset (CSV/Excel) with 'title' and 'description' columns",
     type=["csv", "xlsx"]
 )
 
-# Path for cached embeddings
-CACHE_PATH = Path("cached_job_embeddings.pt")
+CACHE_PATH = Path("cached_embeddings.pt")
 
-# --------------------------------------
-# LOAD DATASET FUNCTION
-# --------------------------------------
 def load_job_data(file):
     if file.name.endswith(".csv"):
         df = pd.read_csv(file)
     else:
         df = pd.read_excel(file)
-    # Normalize column names
     df.columns = [c.lower().strip() for c in df.columns]
     if "title" not in df.columns or "description" not in df.columns:
-        st.error("Dataset must have columns named 'title' and 'description'.")
+        st.error("Dataset must have 'title' and 'description' columns.")
         st.stop()
-    df = df.dropna(subset=["title", "description"]).reset_index(drop=True)
-    return df
+    return df.dropna(subset=["title", "description"]).reset_index(drop=True)
 
-
-# --------------------------------------
-# ENCODING & CACHING
-# --------------------------------------
 def compute_embeddings(df):
-    """Compute or load embeddings safely for large datasets."""
+    # Use cached embeddings if available and dataset length matches
     if CACHE_PATH.exists():
         cache = torch.load(CACHE_PATH)
         if len(cache["titles"]) == len(df):
             st.info("✅ Loaded cached embeddings.")
             return cache["embeddings"]
-        else:
-            st.warning("⚠️ Dataset changed — re-computing embeddings.")
-
-    st.info("🔄 Computing embeddings for all job descriptions (first time only, please wait)...")
-    texts = df["description"].tolist()
-    # Batched encoding for large data
-    embeddings = embedder.encode(texts, batch_size=32, show_progress_bar=True, convert_to_tensor=True)
+    st.info("🔄 Computing embeddings (this may take a few minutes for large datasets)...")
+    embeddings = embedder.encode(df["description"].tolist(), batch_size=32, show_progress_bar=True, convert_to_tensor=True)
     torch.save({"titles": df["title"].tolist(), "embeddings": embeddings}, CACHE_PATH)
-    st.success("✅ Embeddings saved for future use.")
+    st.success("✅ Embeddings cached for future runs.")
     return embeddings
-
 
 if uploaded_file:
     jobs_df = load_job_data(uploaded_file)
     embeddings = compute_embeddings(jobs_df)
 else:
-    st.warning("Please upload your dataset to continue.")
+    st.warning("Please upload a dataset to continue.")
     st.stop()
 
-
-# --------------------------------------
-# QUIZ FORM
-# --------------------------------------
+# ---------------------------
+# Quiz Form
+# ---------------------------
 with st.form("career_form"):
     st.subheader("🎯 Quick Career Quiz")
     interests = st.text_area("What topics or activities excite you most?")
     skills = st.text_area("What are your strongest skills?")
-    dream_job = st.text_input("Describe your dream job or lifestyle (optional):")
+    dream_job = st.text_input("Describe your dream job or ideal life (optional):")
     submitted = st.form_submit_button("Find My Best Career Matches")
 
-
-# --------------------------------------
-# MATCHING LOGIC
-# --------------------------------------
+# ---------------------------
+# Matching
+# ---------------------------
 if submitted:
-    with st.spinner("🧠 Analyzing your profile and finding best career matches..."):
-        user_text = f"My interests: {interests}. My skills: {skills}. My dream job: {dream_job}."
-        user_embedding = embedder.encode(user_text, convert_to_tensor=True)
+    with st.spinner("🧠 Finding best career matches..."):
+        user_text = f"My interests: {interests}. My skills: {skills}. Dream job: {dream_job}."
+        user_emb = embedder.encode(user_text, convert_to_tensor=True)
 
-        # Compute cosine similarities
-        sims = util.cos_sim(user_embedding, embeddings)[0]
+        # Cosine similarity
+        sims = util.cos_sim(user_emb, embeddings)[0]
         jobs_df["similarity"] = sims.cpu().numpy()
-
-        # Top 3 matches
         top_jobs = jobs_df.sort_values("similarity", ascending=False).head(3)
 
-    st.success("✅ Your Top Career Matches")
+    st.success("✅ Your Top Career Recommendations")
 
-    # --------------------------------------
-    # GENERATE AI EXPLANATIONS
-    # --------------------------------------
+    # ---------------------------
+    # Generate Friendly Explanations
+    # ---------------------------
     for _, row in top_jobs.iterrows():
         st.markdown(f"### 🏆 {row['title']}")
         st.caption(f"Similarity Score: {row['similarity']:.3f}")
 
         prompt = f"""
-You are a friendly AI career advisor.
-Explain why the following career is a great fit for someone with these traits,
-and suggest how they can begin learning it.
+You are a friendly AI career advisor. Explain why this career fits the user and suggest how to start learning it.
 
 Career: {row['title']}
 Description: {row['description']}
@@ -140,11 +112,11 @@ Dream Job: {dream_job}
 
 Include:
 1. Why this fits the user
-2. Learning Roadmap (free resources, no links)
-3. First Step to Start Today
+2. Learning roadmap (free resources, no links)
+3. First step to start today
 """
-        response = generator(prompt, max_new_tokens=400, temperature=0.7)[0]["generated_text"]
+        response = generator(prompt, max_new_tokens=400)[0]["generated_text"]
         st.markdown(response)
         st.divider()
 
-    st.caption("💡 Powered by MiniLM for matching + FLAN-T5 for explanations — runs fully local.")
+    st.caption("💡 Powered by MiniLM for matching + FLAN-T5 for explanations — fully offline, crash-proof.")
