@@ -102,7 +102,8 @@ if submitted:
         st.caption(f"Similarity Score: {row['similarity']:.3f}")
 
         prompt = f"""
-You are a friendly AI career advisor. Explain why this career fits the user and suggest how to start learning it.
+You are a friendly AI career advisor. Explain in detail why this career is a great fit for the user,
+and suggest how to start learning it.
 
 Career: {row['title']}
 Description: {row['description']}
@@ -115,7 +116,8 @@ Include:
 2. Learning roadmap (free resources, no links)
 3. First step to start today
 """
-        response = generator(prompt, max_new_tokens=400)[0]["generated_text"]
+        # Robust pipeline call
+        response = generator(prompt, max_new_tokens=400, do_sample=True)[0]["generated_text"]
         st.markdown(response)
         st.divider()
 
