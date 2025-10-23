@@ -9,7 +9,7 @@ from transformers import pipeline
 # Page Config
 # ---------------------------
 st.set_page_config(
-    page_title="STEMPath – AI Career & Learning Guide",
+    page_title="🧠 STEMPath – AI Career & Learning Guide",
     page_icon="🧠",
     layout="centered"
 )
@@ -18,7 +18,7 @@ st.markdown("Discover your ideal career path using open-source AI — no API key
 st.divider()
 
 # ---------------------------
-# Models (cached)
+# Load Models
 # ---------------------------
 @st.cache_resource
 def load_models():
@@ -50,13 +50,13 @@ def load_job_data(file):
     return df.dropna(subset=["title", "description"]).reset_index(drop=True)
 
 def compute_embeddings(df):
-    # Use cached embeddings if available and dataset length matches
+    # Use cached embeddings if available
     if CACHE_PATH.exists():
         cache = torch.load(CACHE_PATH)
         if len(cache["titles"]) == len(df):
             st.info("✅ Loaded cached embeddings.")
             return cache["embeddings"]
-    st.info("🔄 Computing embeddings (this may take a few minutes for large datasets)...")
+    st.info("🔄 Computing embeddings (may take a few minutes)...")
     embeddings = embedder.encode(df["description"].tolist(), batch_size=32, show_progress_bar=True, convert_to_tensor=True)
     torch.save({"titles": df["title"].tolist(), "embeddings": embeddings}, CACHE_PATH)
     st.success("✅ Embeddings cached for future runs.")
@@ -87,7 +87,6 @@ if submitted:
         user_text = f"My interests: {interests}. My skills: {skills}. Dream job: {dream_job}."
         user_emb = embedder.encode(user_text, convert_to_tensor=True)
 
-        # Cosine similarity
         sims = util.cos_sim(user_emb, embeddings)[0]
         jobs_df["similarity"] = sims.cpu().numpy()
         top_jobs = jobs_df.sort_values("similarity", ascending=False).head(3)
@@ -116,7 +115,7 @@ Include:
 2. Learning roadmap (free resources, no links)
 3. First step to start today
 """
-        # Robust pipeline call
+
         response = generator(prompt, max_new_tokens=400, do_sample=True)[0]["generated_text"]
         st.markdown(response)
         st.divider()
