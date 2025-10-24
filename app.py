@@ -7,9 +7,9 @@ from sentence_transformers import SentenceTransformer, util
 # ---------------------------
 # PAGE CONFIG
 # ---------------------------
-st.set_page_config(page_title="🧠 STEMPath – AI Career & Learning Guide", page_icon="🧠", layout="centered")
-st.title("🧠 STEMPath – AI Career & Learning Guide")
-st.markdown("Find your ideal career path using open-source AI — fully offline and instant results!")
+st.set_page_config(page_title="STEMPath – Career Discovery", page_icon="🧭", layout="centered")
+st.title("🔹 STEMPath – Career Discovery Guide")
+st.markdown("Discover the best STEM careers that fit your interests, skills, and goals.")
 st.divider()
 
 # ---------------------------
@@ -28,7 +28,7 @@ DATA_PATH = Path("OccupationData.csv")
 CACHE_PATH = Path("cached_embeddings.pt")
 
 if not DATA_PATH.exists():
-    st.error("❌ Missing OccupationData.csv file in the same directory.")
+    st.error("Missing `OccupationData.csv` in the same directory.")
     st.stop()
 
 @st.cache_data
@@ -36,7 +36,7 @@ def load_jobs():
     df = pd.read_csv(DATA_PATH)
     df.columns = [c.lower().strip() for c in df.columns]
     if "title" not in df.columns or "description" not in df.columns:
-        st.error("Dataset must contain 'title' and 'description' columns.")
+        st.error("Dataset must include 'title' and 'description' columns.")
         st.stop()
     return df.dropna(subset=["title", "description"]).reset_index(drop=True)
 
@@ -50,7 +50,7 @@ def get_embeddings(df):
         cache = torch.load(CACHE_PATH)
         if len(cache["titles"]) == len(df):
             return cache["embeddings"]
-    with st.spinner("🔄 Encoding job descriptions... (first time only)"):
+    with st.spinner("Preparing dataset (only the first time)..."):
         with torch.no_grad():
             emb = embedder.encode(df["description"].tolist(), batch_size=32, convert_to_tensor=True)
         torch.save({"titles": df["title"].tolist(), "embeddings": emb}, CACHE_PATH)
@@ -59,7 +59,7 @@ def get_embeddings(df):
 embeddings = get_embeddings(jobs_df)
 
 # ---------------------------
-# USER INPUT FORM
+# USER INPUT
 # ---------------------------
 with st.form("career_form"):
     st.subheader("🎯 Quick Career Quiz")
@@ -73,10 +73,10 @@ with st.form("career_form"):
 # ---------------------------
 if submitted:
     if not interests or not skills:
-        st.warning("Please fill out both interests and skills.")
+        st.warning("Please fill out both interests and skills before continuing.")
         st.stop()
 
-    with st.spinner("🔍 Matching careers..."):
+    with st.spinner("Analyzing your answers..."):
         user_text = f"My interests: {interests}. My skills: {skills}. Dream job: {dream}"
         with torch.no_grad():
             user_emb = embedder.encode(user_text, convert_to_tensor=True)
@@ -84,13 +84,11 @@ if submitted:
         jobs_df["similarity"] = sims.cpu().numpy()
         top = jobs_df.sort_values("similarity", ascending=False).head(3).reset_index(drop=True)
 
-    st.success("✅ Your Top 3 Career Recommendations")
-    st.markdown("Here are the careers that best match your profile:")
-
+    st.success("Your Top 3 Career Matches")
     for i, row in top.iterrows():
-        st.markdown(f"### 🏆 {i+1}. {row['title']}")
-        st.caption(f"**Similarity Score:** {row['similarity']:.3f}")
-        st.markdown(f"**Description:** {row['description'][:400]}...")
+        st.markdown(f"### {i+1}. {row['title']}")
+        st.caption(f"Match Score: {row['similarity']:.3f}")
+        st.markdown(f"{row['description'][:400]}...")
         st.divider()
 
-    st.caption("💡 Fast mode enabled — powered by MiniLM embeddings for instant matching.")
+    st.caption("STEMPath uses semantic search to match your profile to real-world careers.")
