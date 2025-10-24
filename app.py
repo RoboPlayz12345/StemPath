@@ -23,7 +23,11 @@ st.divider()
 @st.cache_resource
 def load_models():
     embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    generator = pipeline("text2text-generation", model="google/flan-t5-base")
+    try:
+        generator = pipeline("text2text-generation", model="google/flan-t5-large")
+    except Exception:
+        st.warning("⚠️ Using smaller fallback model: flan-t5-base")
+        generator = pipeline("text2text-generation", model="google/flan-t5-base")
     return embedder, generator
 
 embedder, generator = load_models()
@@ -99,22 +103,36 @@ if submitted:
         st.caption(f"Similarity Score: {row['similarity']:.3f}")
 
         prompt = f"""
-You are an expert and friendly AI career advisor.
-Explain why this career is a great fit for the user and how they can start learning.
+You are a friendly expert AI career advisor. 
+You must clearly output the following 3 sections in detail with emojis and markdown formatting:
 
-Career: {row['title']}
-Description: {row['description']}
+### 💡 Why This Career Fits
+Explain exactly why this career matches the user's interests and skills, using specific reasoning.
+
+### 🎓 Learning Roadmap
+List 4–6 realistic steps or resources (free YouTube, MOOCs, open projects, GitHub practice ideas — no links). 
+Mention what to study in order and what skills to build.
+
+### 🚀 First Step Today
+Give one easy actionable step they can take right now to begin their journey.
+
+Career Title: {row['title']}
+Career Description: {row['description']}
 User Interests: {interests}
 User Skills: {skills}
 Dream Job: {dream_job}
 
-Include:
-1. Why this fits the user
-2. A realistic learning roadmap (mention free learning types like YouTube, MOOCs, open-source projects — no links)
-3. One practical first step to start today
+Be warm, detailed, and inspiring.
 """
-        result = generator(prompt, max_new_tokens=400, do_sample=True, top_p=0.9)
-        st.markdown(result[0]["generated_text"])
+        response = generator(
+            prompt,
+            max_new_tokens=600,
+            temperature=0.9,
+            top_p=0.95,
+            do_sample=True
+        )[0]["generated_text"]
+
+        st.markdown(response)
         st.divider()
 
-    st.caption("💡 Powered by MiniLM for career matching + FLAN-T5 for explanations — 100% offline, safe, and crash-proof.")
+    st.caption("💡 Powered by MiniLM for matching + FLAN-T5 for detailed reasoning — 100% offline, safe, and optimized.")
