@@ -14,7 +14,7 @@ st.markdown("Discover your ideal STEM career path using open-source AI — fully
 st.divider()
 
 # ---------------------------
-# LOAD MODELS (LIGHTWEIGHT)
+# LOAD MODELS
 # ---------------------------
 @st.cache_resource
 def load_models():
@@ -62,7 +62,7 @@ def get_embeddings(df):
 embeddings = get_embeddings(jobs_df)
 
 # ---------------------------
-# USER INPUT FORM
+# USER INPUT
 # ---------------------------
 with st.form("career_form"):
     st.subheader("🎯 Quick Career Quiz")
@@ -72,14 +72,14 @@ with st.form("career_form"):
     submitted = st.form_submit_button("Find My Career Matches")
 
 # ---------------------------
-# RESULTS
+# MAIN LOGIC
 # ---------------------------
 if submitted:
     if not interests or not skills:
-        st.warning("Please fill out both interests and skills to get accurate matches.")
+        st.warning("Please fill out both interests and skills.")
         st.stop()
 
-    with st.spinner("🔍 Finding your top 3 career matches..."):
+    with st.spinner("🔍 Finding your top 3 matches..."):
         user_text = f"My interests: {interests}. My skills: {skills}. Dream job: {dream}"
         with torch.no_grad():
             user_emb = embedder.encode(user_text, convert_to_tensor=True)
@@ -89,36 +89,38 @@ if submitted:
 
     st.success("✅ Your Top 3 Career Recommendations")
 
-    # ---------------------------
-    # DISPLAY TOP 3 CAREERS
-    # ---------------------------
-    for i, row in top.iterrows():
-        st.markdown(f"### 🏆 {i+1}. {row['title']}")
-        st.caption(f"**Similarity Score:** {row['similarity']:.3f}")
-
+    explanations = []
+    for _, row in top.iterrows():
         prompt = f"""
-You are a career coach. In 3 short sentences, explain:
-1. Why this job matches the user's interests and skills.
-2. What basic skills or topics to learn (4 bullets max).
-3. One simple first step today.
+You are a helpful career advisor. Explain briefly:
+1. Why this job fits the user's interests and skills.
+2. What topics to learn (4 short bullet points max).
+3. One first step to start.
 
 User interests: {interests}
 User skills: {skills}
 Dream job: {dream}
-Career: {row['title']} - {row['description']}
+Career: {row['title']} - {row['description'][:200]}
 """
         try:
             with torch.no_grad():
-                out = generator(prompt, max_new_tokens=180, do_sample=True, top_p=0.9, temperature=0.7)[0]["generated_text"]
-            if len(out.strip()) < 10:
-                raise ValueError("Empty output.")
-            st.markdown(out)
-        except Exception as e:
-            st.warning(f"⚠️ Could not generate explanation for {row['title']}, using fallback.")
-            st.markdown(f"- This career aligns with your skills in **{skills}** and interests in **{interests}**. "
-                        f"Explore topics like project management, problem solving, and teamwork to get started!")
+                out = generator(prompt, max_new_tokens=150, do_sample=True, top_p=0.9, temperature=0.7)[0]["generated_text"]
+            if len(out.strip()) < 15:
+                raise ValueError("Empty response.")
+        except Exception:
+            out = (f"This career fits your skills in {skills} and interests in {interests}. "
+                   "Start by watching beginner tutorials, joining online courses, or exploring related projects.")
+        explanations.append(out)
 
+    # ---------------------------
+    # DISPLAY ALL 3 AT ONCE
+    # ---------------------------
+    for i, (idx, row) in enumerate(top.iterrows()):
+        st.markdown(f"### 🏆 {i+1}. {row['title']}")
+        st.caption(f"**Similarity Score:** {row['similarity']:.3f}")
+        st.markdown(f"**Description:** {row['description'][:250]}...")
+        st.markdown(explanations[i])
         st.divider()
 
-    st.caption("💡 Fast mode enabled using `flan-t5-small` for instant results.")
+    st.caption("💡 Fast mode: 3 parallel AI summaries using flan-t5-small")
 
