@@ -14,7 +14,7 @@ st.set_page_config(
     layout="centered"
 )
 st.title("🧠 STEMPath – AI Career & Learning Guide")
-st.markdown("Discover your ideal career path using open-source AI — no API keys, fully offline!")
+st.markdown("Find your ideal career path — fully offline, open-source, and crash-proof!")
 st.divider()
 
 # ---------------------------
@@ -23,11 +23,7 @@ st.divider()
 @st.cache_resource
 def load_models():
     embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    try:
-        generator = pipeline("text2text-generation", model="google/flan-t5-large")
-    except Exception:
-        st.warning("⚠️ Using smaller fallback model: flan-t5-base")
-        generator = pipeline("text2text-generation", model="google/flan-t5-base")
+    generator = pipeline("text2text-generation", model="google/flan-t5-base")
     return embedder, generator
 
 embedder, generator = load_models()
@@ -39,7 +35,7 @@ DATA_PATH = Path("OccupationData.csv")
 CACHE_PATH = Path("cached_embeddings.pt")
 
 if not DATA_PATH.exists():
-    st.error("❌ Could not find OccupationData.csv in app directory.")
+    st.error("❌ Missing OccupationData.csv in app folder.")
     st.stop()
 
 @st.cache_data
@@ -47,7 +43,7 @@ def load_job_data():
     df = pd.read_csv(DATA_PATH)
     df.columns = [c.lower().strip() for c in df.columns]
     if "title" not in df.columns or "description" not in df.columns:
-        st.error("Dataset must include 'title' and 'description' columns.")
+        st.error("Dataset must have 'title' and 'description' columns.")
         st.stop()
     return df.dropna(subset=["title", "description"]).reset_index(drop=True)
 
@@ -62,7 +58,7 @@ def compute_embeddings(df):
         if len(cache["titles"]) == len(df):
             st.info("✅ Loaded cached embeddings.")
             return cache["embeddings"]
-    st.info("🔄 Computing embeddings (first run may take a few minutes)...")
+    st.info("🔄 Computing embeddings (only first run)...")
     embeddings = embedder.encode(
         df["description"].tolist(),
         batch_size=32,
@@ -70,7 +66,7 @@ def compute_embeddings(df):
         convert_to_tensor=True
     )
     torch.save({"titles": df["title"].tolist(), "embeddings": embeddings}, CACHE_PATH)
-    st.success("✅ Cached embeddings for faster future runs.")
+    st.success("✅ Cached embeddings for next time.")
     return embeddings
 
 embeddings = compute_embeddings(jobs_df)
@@ -98,41 +94,49 @@ if submitted:
 
     st.success("✅ Your Top Career Recommendations")
 
-    for _, row in top_jobs.iterrows():
-        st.markdown(f"### 🏆 {row['title']}")
+    # ---------------------------
+    # GENERATE ALL 3 EXPLANATIONS
+    # ---------------------------
+    for i, (_, row) in enumerate(top_jobs.iterrows(), 1):
+        st.markdown(f"## 🏆 #{i}. {row['title']}")
         st.caption(f"Similarity Score: {row['similarity']:.3f}")
 
+        # Prepare structured, clear prompt
         prompt = f"""
-You are a friendly expert AI career advisor. 
-You must clearly output the following 3 sections in detail with emojis and markdown formatting:
+You are an expert AI career advisor. Respond using markdown and emojis.
+Provide three clear sections for the user:
 
 ### 💡 Why This Career Fits
-Explain exactly why this career matches the user's interests and skills, using specific reasoning.
+Explain *why this career matches* the user's interests and skills in 3-5 sentences.
 
 ### 🎓 Learning Roadmap
-List 4–6 realistic steps or resources (free YouTube, MOOCs, open projects, GitHub practice ideas — no links). 
-Mention what to study in order and what skills to build.
+List 4-6 specific steps or free learning methods (e.g., YouTube tutorials, MOOCs, open projects, GitHub challenges — no links). 
+Be concrete: what skills or topics to learn, and in what order.
 
 ### 🚀 First Step Today
-Give one easy actionable step they can take right now to begin their journey.
+Give one small practical action the user can take right now to start.
 
 Career Title: {row['title']}
 Career Description: {row['description']}
 User Interests: {interests}
 User Skills: {skills}
 Dream Job: {dream_job}
-
-Be warm, detailed, and inspiring.
 """
-        response = generator(
-            prompt,
-            max_new_tokens=600,
-            temperature=0.9,
-            top_p=0.95,
-            do_sample=True
-        )[0]["generated_text"]
 
-        st.markdown(response)
+        try:
+            with st.spinner(f"Generating explanation for {row['title']}..."):
+                response = generator(
+                    prompt,
+                    max_new_tokens=600,
+                    do_sample=True,
+                    temperature=0.9,
+                    top_p=0.95
+                )[0]["generated_text"]
+
+            st.markdown(response)
+        except Exception as e:
+            st.error(f"⚠️ Couldn't generate explanation for {row['title']}: {e}")
+
         st.divider()
 
-    st.caption("💡 Powered by MiniLM for matching + FLAN-T5 for detailed reasoning — 100% offline, safe, and optimized.")
+    st.caption("💡 Powered by MiniLM for matching + FLAN-T5 for structured reasoning — fully offline and stable.")
