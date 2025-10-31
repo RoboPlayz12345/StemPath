@@ -1,9 +1,9 @@
 -f https://download.pytorch.org/whl/cpu/torch_stable.html
 streamlit
-pandas
 torch
+pandas
 sentence-transformers
-pyttsx3
+gtts
 openai
 anthropic
 google-generativeai
