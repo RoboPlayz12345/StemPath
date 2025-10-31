@@ -26,7 +26,7 @@ st.divider()
 DATA_PATH = Path("OccupationData.csv")
 CACHE_PATH = Path("cached_embeddings.pt")
 try:
-    df_jobs = pd.read_csv(DATA_PATH).dropna(subset=["title", "description"]).reset_index(drop=True)
+    df_jobs = pd.read_csv(DATA_PATH).dropna(subset=["Title", "Description"]).reset_index(drop=True)
 except FileNotFoundError:
     st.error("❌ Missing `OccupationData.csv` in the same directory.")
     st.stop()
@@ -152,6 +152,7 @@ if submitted:
             st.warning(f"⚠️ AI insight unavailable: {e}")
 
 st.caption("STEMPath uses semantic search to match your profile with real-world STEM careers.")
+
 
 
 
