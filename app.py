@@ -9,8 +9,8 @@ import io
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
-st.set_page_config(page_title="STEMPath+ – AI Career Discovery", page_icon="🧭", layout="centered")
-st.title("🧭 STEMPath+ – AI Career Discovery Guide")
+st.set_page_config(page_title="STEMPath – AI Career Discovery", page_icon="🧭", layout="centered")
+st.title("🧭 STEMPath – AI Career Discovery Guide")
 st.markdown("Discover your ideal STEM career path using smart AI recommendations — offline or enhanced with AI APIs.")
 st.divider()
 
@@ -182,4 +182,5 @@ if submitted:
 
         st.divider()
 
-    st.caption("STEMPath+ uses AI embeddings for offline career matching and optional API models for deeper insights.")
+    st.caption("STEMPath uses AI embeddings for offline career matching and optional API models for deeper insights.")
+
