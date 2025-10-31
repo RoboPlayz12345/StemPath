@@ -1,16 +1,17 @@
 import streamlit as st
 import pandas as pd
 import torch
-import pyttsx3
 from pathlib import Path
 from sentence_transformers import SentenceTransformer, util
+from gtts import gTTS
+import io
 
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
-st.set_page_config(page_title="STEMPath – AI Career Discovery", page_icon="🧭", layout="centered")
-st.title("🧭 STEMPath – AI Career Discovery Guide")
-st.markdown("Discover your ideal STEM career path using smart AI recommendations — even offline.")
+st.set_page_config(page_title="STEMPath+ – AI Career Discovery", page_icon="🧭", layout="centered")
+st.title("🧭 STEMPath+ – AI Career Discovery Guide")
+st.markdown("Discover your ideal STEM career path using smart AI recommendations — offline or enhanced with AI APIs.")
 st.divider()
 
 # -----------------------------
@@ -28,13 +29,13 @@ embedder = load_embedder()
 DATA_PATH = Path("OccupationData.csv")
 
 if not DATA_PATH.exists():
-    st.error("Missing `OccupationData.csv` in the same directory.")
+    st.error("❌ Missing `OccupationData.csv` in the same directory.")
     st.stop()
 
 @st.cache_data
 def load_jobs():
     df = pd.read_csv(DATA_PATH)
-    df.columns = [c.lower().strip() for c in df.columns]
+    df.columns = [c.lower().strip() for c in df.columns]  # Normalize
     if "title" not in df.columns or "description" not in df.columns:
         st.error("Dataset must include 'title' and 'description' columns.")
         st.stop()
@@ -43,7 +44,7 @@ def load_jobs():
 jobs_df = load_jobs()
 
 # -----------------------------
-# EMBEDDINGS (LIVE)
+# EMBEDDINGS (CACHED IN APP)
 # -----------------------------
 @st.cache_resource
 def get_embeddings(df):
@@ -53,7 +54,7 @@ def get_embeddings(df):
 embeddings = get_embeddings(jobs_df)
 
 # -----------------------------
-# SIDEBAR – AI SETTINGS
+# SIDEBAR – OPTIONAL AI SETTINGS
 # -----------------------------
 st.sidebar.header("⚙️ AI Integration (Optional)")
 ai_provider = st.sidebar.selectbox(
@@ -73,11 +74,11 @@ else:
 # -----------------------------
 def speak_text(text):
     try:
-        engine = pyttsx3.init()
-        engine.setProperty("rate", 165)
-        engine.setProperty("volume", 1.0)
-        engine.say(text)
-        engine.runAndWait()
+        tts = gTTS(text)
+        audio_bytes = io.BytesIO()
+        tts.write_to_fp(audio_bytes)
+        audio_bytes.seek(0)
+        st.audio(audio_bytes.read(), format="audio/mp3")
     except Exception as e:
         st.warning(f"Speech error: {e}")
 
@@ -131,7 +132,6 @@ def generate_summary(provider, key, career_title, description, user_text):
             return res.strip()
 
     except Exception:
-        # Friendly API error
         return "⚠️ API error or invalid key. Please check your API credentials and try again."
 
 # -----------------------------
@@ -176,11 +176,10 @@ if submitted:
             st.markdown(f"💡 **Suggestion:** {summary}")
 
         # Speaker button
-        col1, col2 = st.columns([1, 5])
+        col1, col2 = st.columns([1,5])
         if col1.button("🔊 Speak", key=f"speaker_{i}"):
             speak_text(f"{row['title']}. {summary}")
 
         st.divider()
 
-    st.caption("STEMPath uses AI embeddings for offline career matching and optional API models for deeper insights.")
-
+    st.caption("STEMPath+ uses AI embeddings for offline career matching and optional API models for deeper insights.")
