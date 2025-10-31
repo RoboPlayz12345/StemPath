@@ -1,9 +1,10 @@
 -f https://download.pytorch.org/whl/cpu/torch_stable.html
-torch>=2.4.1
-transformers>=4.44.2
-sentence-transformers>=3.1.0
-streamlit==1.39.0
-pandas>=2.2.3
-openpyxl>=3.1.5
-numpy>=1.26.4
-huggingface-hub>=0.25.2
+streamlit
+pandas
+torch
+sentence-transformers
+pyttsx3
+openai
+anthropic
+google-generativeai
+huggingface_hub
