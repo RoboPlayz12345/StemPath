@@ -1,95 +1,148 @@
 import streamlit as st
 import pandas as pd
 import torch
-from sentence_transformers import SentenceTransformer, util
-from gtts import gTTS
-import io
+import pyttsx3
 from pathlib import Path
+from sentence_transformers import SentenceTransformer, util
 
-# Optional AI imports
-import openai
-import anthropic
-import google.generativeai as genai
-from huggingface_hub import InferenceClient
-
-# ---------------------------
+# -----------------------------------------------------
 # PAGE CONFIG
-# ---------------------------
-st.set_page_config(page_title="STEMPath – AI Career Discovery", page_icon="🧭", layout="centered")
-st.title("🧭 STEMPath – AI Career Discovery")
-st.markdown("Find your best-fit STEM career path using AI-powered semantic matching and insights.")
+# -----------------------------------------------------
+st.set_page_config(page_title="STEMPath+ – AI Career Discovery", page_icon="🧭", layout="centered")
+st.title("🧭 STEMPath+ – AI Career Discovery Guide")
+st.markdown("Discover your ideal STEM career path using smart AI recommendations — even offline.")
 st.divider()
 
-# ---------------------------
-# LOAD DATASET
-# ---------------------------
-DATA_PATH = Path("OccupationData.csv")
-CACHE_PATH = Path("cached_embeddings.pt")
-try:
-    df_jobs = pd.read_csv(DATA_PATH).dropna(subset=["Title", "Description"]).reset_index(drop=True)
-except FileNotFoundError:
-    st.error("❌ Missing `OccupationData.csv` in the same directory.")
-    st.stop()
-
-# ---------------------------
-# LOAD EMBEDDER
-# ---------------------------
+# -----------------------------------------------------
+# LOAD MODEL (Offline)
+# -----------------------------------------------------
 @st.cache_resource
 def load_embedder():
     return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 embedder = load_embedder()
 
-# ---------------------------
-# TEXT-TO-SPEECH
-# ---------------------------
+# -----------------------------------------------------
+# LOAD DATASET
+# -----------------------------------------------------
+DATA_PATH = Path("OccupationData.csv")
+CACHE_PATH = Path("cached_embeddings.pt")
+
+if not DATA_PATH.exists():
+    st.error("Missing `OccupationData.csv` in the same directory.")
+    st.stop()
+
+@st.cache_data
+def load_jobs():
+    df = pd.read_csv(DATA_PATH)
+    df.columns = [c.lower().strip() for c in df.columns]
+    if "title" not in df.columns or "description" not in df.columns:
+        st.error("Dataset must include 'title' and 'description' columns.")
+        st.stop()
+    return df.dropna(subset=["title", "description"]).reset_index(drop=True)
+
+jobs_df = load_jobs()
+
+# -----------------------------------------------------
+# CACHE EMBEDDINGS
+# -----------------------------------------------------
+def get_embeddings(df):
+    if CACHE_PATH.exists():
+        cache = torch.load(CACHE_PATH)
+        if len(cache["titles"]) == len(df):
+            return cache["embeddings"]
+    with st.spinner("Preparing dataset (only the first time)..."):
+        with torch.no_grad():
+            emb = embedder.encode(df["description"].tolist(), batch_size=32, convert_to_tensor=True)
+        torch.save({"titles": df["title"].tolist(), "embeddings": emb}, CACHE_PATH)
+    return emb
+
+embeddings = get_embeddings(jobs_df)
+
+# -----------------------------------------------------
+# SIDEBAR – OPTIONAL AI SETTINGS
+# -----------------------------------------------------
+st.sidebar.header("⚙️ AI Integration (Optional)")
+ai_provider = st.sidebar.selectbox(
+    "Choose AI provider:",
+    ["Offline Mode", "OpenAI", "Anthropic", "Google Gemini", "Hugging Face"]
+)
+api_key = st.sidebar.text_input("Enter your API Key (optional):", type="password")
+use_api = api_key.strip() != "" and ai_provider != "Offline Mode"
+
+if use_api:
+    st.sidebar.success(f"✅ Using {ai_provider} for enhanced insights.")
+else:
+    st.sidebar.info("Running in Offline Mode – base recommendations only.")
+
+# -----------------------------------------------------
+# SPEAKER FUNCTION (TTS)
+# -----------------------------------------------------
 def speak_text(text):
     try:
-        tts = gTTS(text)
-        audio_bytes = io.BytesIO()
-        tts.write_to_fp(audio_bytes)
-        st.audio(audio_bytes.getvalue(), format="audio/mp3")
+        engine = pyttsx3.init()
+        engine.setProperty("rate", 165)
+        engine.setProperty("volume", 1.0)
+        engine.say(text)
+        engine.runAndWait()
     except Exception as e:
-        st.warning(f"Speech synthesis failed: {e}")
+        st.warning(f"Speech error: {e}")
 
-# ---------------------------
-# OPTIONAL API KEY
-# ---------------------------
-st.subheader("🔑 Optional Personalization")
-api_brand = st.selectbox(
-    "Choose your AI provider (optional):",
-    ["None", "OpenAI", "Gemini", "Anthropic", "Hugging Face"]
-)
-api_key = st.text_input("Enter your API key (optional):", type="password")
+# -----------------------------------------------------
+# AI ENHANCEMENT FUNCTION
+# -----------------------------------------------------
+def generate_summary(provider, key, career_title, description, user_text):
+    prompt = (
+        f"You are a STEM career advisor. The user described: {user_text}\n"
+        f"Career: {career_title}\n"
+        f"Description: {description}\n"
+        f"Give a short personalized explanation (3–4 sentences) about why this fits them "
+        f"and one practical next step they can take."
+    )
 
-# Try to validate API key
-valid_api = False
-if api_brand != "None" and api_key:
     try:
-        if api_brand == "OpenAI":
-            openai.api_key = api_key
-            openai.models.list()
-        elif api_brand == "Gemini":
-            genai.configure(api_key=api_key)
-            genai.list_models()
-        elif api_brand == "Anthropic":
-            client = anthropic.Anthropic(api_key=api_key)
-            client.models.list()
-        elif api_brand == "Hugging Face":
-            client = InferenceClient(token=api_key)
-            _ = client.text_generation("test")
-        st.success(f"✅ Connected to {api_brand} API successfully.")
-        valid_api = True
-    except Exception:
-        st.error(f"❌ Your {api_brand} API key is incorrect. Continuing in base mode.")
-else:
-    st.info("Running in base mode (no external API).")
+        if provider == "OpenAI":
+            from openai import OpenAI
+            client = OpenAI(api_key=key)
+            res = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return res.choices[0].message.content.strip()
 
-st.divider()
+        elif provider == "Anthropic":
+            from anthropic import Anthropic
+            client = Anthropic(api_key=key)
+            msg = client.messages.create(
+                model="claude-3-5-sonnet-latest",
+                max_tokens=300,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return msg.content[0].text.strip()
 
-# ---------------------------
+        elif provider == "Google Gemini":
+            import google.generativeai as genai
+            genai.configure(api_key=key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(prompt)
+            return response.text.strip()
+
+        elif provider == "Hugging Face":
+            from huggingface_hub import InferenceClient
+            client = InferenceClient(token=key)
+            res = client.text_generation(
+                model="mistralai/Mixtral-8x7B-Instruct-v0.1",
+                prompt=prompt,
+                max_new_tokens=200
+            )
+            return res.strip()
+
+    except Exception as e:
+        return f"⚠️ API Error: {e}"
+
+# -----------------------------------------------------
 # USER INPUT FORM
-# ---------------------------
+# -----------------------------------------------------
 with st.form("career_form"):
     st.subheader("🎯 Quick Career Quiz")
     interests = st.text_area("What topics or activities excite you most?")
@@ -97,62 +150,41 @@ with st.form("career_form"):
     dream = st.text_input("Describe your dream job or ideal life (optional):")
     submitted = st.form_submit_button("Find My Top 3 Careers")
 
-# ---------------------------
-# PROCESS RESULTS
-# ---------------------------
+# -----------------------------------------------------
+# RESULTS
+# -----------------------------------------------------
 if submitted:
     if not interests or not skills:
         st.warning("Please fill out both interests and skills before continuing.")
         st.stop()
 
-    user_text = f"My interests: {interests}. My skills: {skills}. Dream job: {dream}"
-
     with st.spinner("Analyzing your responses..."):
+        user_text = f"My interests: {interests}. My skills: {skills}. Dream job: {dream}"
         with torch.no_grad():
             user_emb = embedder.encode(user_text, convert_to_tensor=True)
-            embeddings = embedder.encode(df_jobs["description"].tolist(), convert_to_tensor=True)
             sims = util.cos_sim(user_emb, embeddings)[0]
+        jobs_df["similarity"] = sims.cpu().numpy()
+        top = jobs_df.sort_values("similarity", ascending=False).head(3).reset_index(drop=True)
 
-        df_jobs["similarity"] = sims.cpu().numpy()
-        top = df_jobs.sort_values("similarity", ascending=False).head(3).reset_index(drop=True)
-
-    st.success("Your Top 3 Career Matches 🎓")
+    st.success("🎓 Your Top 3 Career Matches")
     for i, row in top.iterrows():
         st.markdown(f"### {i+1}. {row['title']}")
         st.caption(f"Match Score: {row['similarity']:.3f}")
         st.markdown(f"{row['description'][:400]}...")
-        if st.button(f"🔊 Speak career #{i+1}", key=f"tts_{i}"):
-            speak_text(row["description"])
+
+        # Optional AI enhancement
+        if use_api:
+            with st.spinner(f"Enhancing with {ai_provider}..."):
+                summary = generate_summary(ai_provider, api_key, row["title"], row["description"], user_text)
+                st.markdown(f"🧠 **AI Insight:** {summary}")
+        else:
+            summary = f"This career aligns with your interests and skills. Explore online courses and internships in {row['title']} to begin your journey."
+            st.markdown(f"💡 **Suggestion:** {summary}")
+
+        # Speaker button
+        if st.button(f"🔊 Speak Career #{i+1}", key=f"speaker_{i}"):
+            speak_text(f"{row['title']}. {summary}")
+
         st.divider()
 
-    # Optional: Personalized AI summary if valid API
-    if valid_api:
-        st.subheader("✨ Personalized AI Career Insights")
-        prompt = f"Based on these interests and skills: {user_text}, summarize why these 3 STEM careers might fit well."
-        try:
-            summary = ""
-            if api_brand == "OpenAI":
-                response = openai.ChatCompletion.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                summary = response.choices[0].message.content
-            elif api_brand == "Gemini":
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                summary = model.generate_content(prompt).text
-            elif api_brand == "Anthropic":
-                summary = client.messages.create(
-                    model="claude-3",
-                    messages=[{"role": "user", "content": prompt}]
-                ).content[0].text
-            elif api_brand == "Hugging Face":
-                summary = client.text_generation(prompt, model="mistralai/Mistral-7B-Instruct-v0.2", max_new_tokens=200)
-            st.markdown(f"🧩 **AI Insight:** {summary}")
-        except Exception as e:
-            st.warning(f"⚠️ AI insight unavailable: {e}")
-
-st.caption("STEMPath uses semantic search to match your profile with real-world STEM careers.")
-
-
-
-
+    st.caption("STEMPath+ uses AI embeddings for offline career matching and optional API models for deeper insights.")
