@@ -5,28 +5,27 @@ import pyttsx3
 from pathlib import Path
 from sentence_transformers import SentenceTransformer, util
 
-# -----------------------------------------------------
+# -----------------------------
 # PAGE CONFIG
-# -----------------------------------------------------
+# -----------------------------
 st.set_page_config(page_title="STEMPath+ – AI Career Discovery", page_icon="🧭", layout="centered")
 st.title("🧭 STEMPath+ – AI Career Discovery Guide")
 st.markdown("Discover your ideal STEM career path using smart AI recommendations — even offline.")
 st.divider()
 
-# -----------------------------------------------------
-# LOAD MODEL (Offline)
-# -----------------------------------------------------
+# -----------------------------
+# LOAD MODEL (OFFLINE)
+# -----------------------------
 @st.cache_resource
 def load_embedder():
     return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 embedder = load_embedder()
 
-# -----------------------------------------------------
+# -----------------------------
 # LOAD DATASET
-# -----------------------------------------------------
+# -----------------------------
 DATA_PATH = Path("OccupationData.csv")
-CACHE_PATH = Path("cached_embeddings.pt")
 
 if not DATA_PATH.exists():
     st.error("Missing `OccupationData.csv` in the same directory.")
@@ -43,25 +42,19 @@ def load_jobs():
 
 jobs_df = load_jobs()
 
-# -----------------------------------------------------
-# CACHE EMBEDDINGS
-# -----------------------------------------------------
+# -----------------------------
+# EMBEDDINGS (LIVE)
+# -----------------------------
+@st.cache_resource
 def get_embeddings(df):
-    if CACHE_PATH.exists():
-        cache = torch.load(CACHE_PATH)
-        if len(cache["titles"]) == len(df):
-            return cache["embeddings"]
-    with st.spinner("Preparing dataset (only the first time)..."):
-        with torch.no_grad():
-            emb = embedder.encode(df["description"].tolist(), batch_size=32, convert_to_tensor=True)
-        torch.save({"titles": df["title"].tolist(), "embeddings": emb}, CACHE_PATH)
-    return emb
+    with torch.no_grad():
+        return embedder.encode(df["description"].tolist(), batch_size=32, convert_to_tensor=True)
 
 embeddings = get_embeddings(jobs_df)
 
-# -----------------------------------------------------
-# SIDEBAR – OPTIONAL AI SETTINGS
-# -----------------------------------------------------
+# -----------------------------
+# SIDEBAR – AI SETTINGS
+# -----------------------------
 st.sidebar.header("⚙️ AI Integration (Optional)")
 ai_provider = st.sidebar.selectbox(
     "Choose AI provider:",
@@ -75,9 +68,9 @@ if use_api:
 else:
     st.sidebar.info("Running in Offline Mode – base recommendations only.")
 
-# -----------------------------------------------------
-# SPEAKER FUNCTION (TTS)
-# -----------------------------------------------------
+# -----------------------------
+# TEXT-TO-SPEECH FUNCTION
+# -----------------------------
 def speak_text(text):
     try:
         engine = pyttsx3.init()
@@ -88,9 +81,9 @@ def speak_text(text):
     except Exception as e:
         st.warning(f"Speech error: {e}")
 
-# -----------------------------------------------------
+# -----------------------------
 # AI ENHANCEMENT FUNCTION
-# -----------------------------------------------------
+# -----------------------------
 def generate_summary(provider, key, career_title, description, user_text):
     prompt = (
         f"You are a STEM career advisor. The user described: {user_text}\n"
@@ -102,9 +95,9 @@ def generate_summary(provider, key, career_title, description, user_text):
 
     try:
         if provider == "OpenAI":
-            from openai import OpenAI
-            client = OpenAI(api_key=key)
-            res = client.chat.completions.create(
+            import openai
+            openai.api_key = key
+            res = openai.ChatCompletion.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}]
             )
@@ -137,12 +130,13 @@ def generate_summary(provider, key, career_title, description, user_text):
             )
             return res.strip()
 
-    except Exception as e:
-        return f"⚠️ API Error: {e}"
+    except Exception:
+        # Friendly API error
+        return "⚠️ API error or invalid key. Please check your API credentials and try again."
 
-# -----------------------------------------------------
+# -----------------------------
 # USER INPUT FORM
-# -----------------------------------------------------
+# -----------------------------
 with st.form("career_form"):
     st.subheader("🎯 Quick Career Quiz")
     interests = st.text_area("What topics or activities excite you most?")
@@ -150,9 +144,9 @@ with st.form("career_form"):
     dream = st.text_input("Describe your dream job or ideal life (optional):")
     submitted = st.form_submit_button("Find My Top 3 Careers")
 
-# -----------------------------------------------------
+# -----------------------------
 # RESULTS
-# -----------------------------------------------------
+# -----------------------------
 if submitted:
     if not interests or not skills:
         st.warning("Please fill out both interests and skills before continuing.")
@@ -176,13 +170,14 @@ if submitted:
         if use_api:
             with st.spinner(f"Enhancing with {ai_provider}..."):
                 summary = generate_summary(ai_provider, api_key, row["title"], row["description"], user_text)
-                st.markdown(f"🧠 **AI Insight:** {summary}")
+            st.markdown(f"🧠 **AI Insight:** {summary}")
         else:
             summary = f"This career aligns with your interests and skills. Explore online courses and internships in {row['title']} to begin your journey."
             st.markdown(f"💡 **Suggestion:** {summary}")
 
         # Speaker button
-        if st.button(f"🔊 Speak Career #{i+1}", key=f"speaker_{i}"):
+        col1, col2 = st.columns([1, 5])
+        if col1.button("🔊 Speak", key=f"speaker_{i}"):
             speak_text(f"{row['title']}. {summary}")
 
         st.divider()
