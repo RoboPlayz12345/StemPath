@@ -4,6 +4,7 @@ import torch
 from sentence_transformers import SentenceTransformer, util
 from gtts import gTTS
 import io
+from pathlib import Path
 
 # Optional AI imports
 import openai
@@ -151,5 +152,6 @@ if submitted:
             st.warning(f"⚠️ AI insight unavailable: {e}")
 
 st.caption("STEMPath uses semantic search to match your profile with real-world STEM careers.")
+
 
 
